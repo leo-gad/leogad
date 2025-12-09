@@ -1,22 +1,59 @@
-import React from 'react';
+import React, { useState, useCallback } from 'react';
 import Header from '@/components/Header';
 import GoogleMap from '@/components/GoogleMap';
 import LocationPanel from '@/components/LocationPanel';
+import HistoryPanel from '@/components/HistoryPanel';
 import { useFirebaseLocation } from '@/hooks/useFirebaseLocation';
+import { toast } from '@/hooks/use-toast';
+
+interface HistoryEntry {
+  id: string;
+  latitude: number;
+  longitude: number;
+  timestamp: number;
+}
+
+const FIREBASE_URL = 'https://dht11-9aca0-default-rtdb.firebaseio.com';
 
 const Index: React.FC = () => {
-  const { latitude, longitude, isLoading, error, lastUpdated, refetch } = useFirebaseLocation();
+  const { latitude, longitude, isLoading, error, lastUpdated, history, refetch } = useFirebaseLocation();
+  const [selectedHistoryEntry, setSelectedHistoryEntry] = useState<HistoryEntry | null>(null);
+
+  const handleClearHistory = useCallback(async () => {
+    try {
+      await fetch(`${FIREBASE_URL}/history.json`, {
+        method: 'DELETE',
+      });
+      toast({
+        title: 'History Cleared',
+        description: 'All location history has been deleted.',
+      });
+      refetch();
+    } catch (err) {
+      toast({
+        title: 'Error',
+        description: 'Failed to clear history.',
+        variant: 'destructive',
+      });
+    }
+  }, [refetch]);
+
+  const handleSelectEntry = useCallback((entry: HistoryEntry) => {
+    setSelectedHistoryEntry(entry);
+    toast({
+      title: 'Location Selected',
+      description: `Viewing position from ${new Date(entry.timestamp).toLocaleString()}`,
+    });
+  }, []);
 
   return (
     <div className="min-h-screen bg-background relative overflow-hidden">
       {/* Background effects */}
       <div className="fixed inset-0 pointer-events-none">
-        {/* Gradient orbs */}
         <div className="absolute top-1/4 -left-32 w-96 h-96 bg-primary/20 rounded-full blur-3xl animate-float" />
         <div className="absolute bottom-1/4 -right-32 w-96 h-96 bg-secondary/20 rounded-full blur-3xl animate-float" style={{ animationDelay: '3s' }} />
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-accent/10 rounded-full blur-3xl" />
         
-        {/* Grid overlay */}
         <div 
           className="absolute inset-0 opacity-5"
           style={{
@@ -40,7 +77,12 @@ const Index: React.FC = () => {
               <div className="lg:col-span-3 order-2 lg:order-1">
                 <div className="h-full min-h-[400px] lg:min-h-0 neon-border rounded-2xl overflow-hidden">
                   {latitude !== 0 && longitude !== 0 ? (
-                    <GoogleMap latitude={latitude} longitude={longitude} />
+                    <GoogleMap 
+                      latitude={latitude} 
+                      longitude={longitude}
+                      history={history}
+                      selectedHistoryEntry={selectedHistoryEntry}
+                    />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center bg-card">
                       <div className="text-center space-y-4">
@@ -54,8 +96,8 @@ const Index: React.FC = () => {
                 </div>
               </div>
 
-              {/* Info panel */}
-              <div className="lg:col-span-1 order-1 lg:order-2">
+              {/* Side panels */}
+              <div className="lg:col-span-1 order-1 lg:order-2 space-y-4">
                 <LocationPanel
                   latitude={latitude}
                   longitude={longitude}
@@ -64,42 +106,26 @@ const Index: React.FC = () => {
                   onRefresh={refetch}
                 />
 
-                {/* Error display */}
                 {error && (
-                  <div className="mt-4 p-4 rounded-xl bg-destructive/10 border border-destructive/30">
+                  <div className="p-4 rounded-xl bg-destructive/10 border border-destructive/30">
                     <p className="text-sm text-destructive">{error}</p>
                   </div>
                 )}
 
-                {/* Quick stats */}
-                <div className="mt-4 glass-panel p-4">
-                  <h3 className="font-display text-sm text-muted-foreground mb-3 uppercase tracking-wider">
-                    Quick Info
-                  </h3>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Source</span>
-                      <span className="text-foreground">Firebase RTDB</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Refresh Rate</span>
-                      <span className="text-neon-green">5 seconds</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Map Provider</span>
-                      <span className="text-foreground">Google Maps</span>
-                    </div>
-                  </div>
-                </div>
+                {/* History Panel */}
+                <HistoryPanel
+                  history={history}
+                  onClearHistory={handleClearHistory}
+                  onSelectEntry={handleSelectEntry}
+                />
               </div>
             </div>
           </div>
         </main>
 
-        {/* Footer */}
         <footer className="relative z-10 p-4 text-center border-t border-border/30">
           <p className="text-xs text-muted-foreground">
-            <span className="gradient-text font-display">GEOTRACK</span> — Real-time location visualization powered by Firebase
+            <span className="gradient-text font-display">GEOTRACK</span> — Real-time location visualization with Firebase history
           </p>
         </footer>
       </div>
