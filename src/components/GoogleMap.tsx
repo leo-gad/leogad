@@ -1,5 +1,6 @@
 /// <reference types="google.maps" />
 import React, { useEffect, useRef, useState } from 'react';
+import { Box, RotateCcw, Maximize2, Mountain } from 'lucide-react';
 
 interface HistoryEntry {
   id: string;
@@ -35,6 +36,9 @@ const GoogleMap: React.FC<GoogleMapProps> = ({
   const [marker, setMarker] = useState<google.maps.Marker | null>(null);
   const [polyline, setPolyline] = useState<google.maps.Polyline | null>(null);
   const [historyMarkers, setHistoryMarkers] = useState<google.maps.Marker[]>([]);
+  const [is3D, setIs3D] = useState(true);
+  const [isRotating, setIsRotating] = useState(false);
+  const rotationRef = useRef<number | null>(null);
 
   useEffect(() => {
     const loadGoogleMaps = () => {
@@ -76,13 +80,17 @@ const GoogleMap: React.FC<GoogleMapProps> = ({
 
       const newMap = new google.maps.Map(mapRef.current, {
         center: { lat: latitude, lng: longitude },
-        zoom: 14,
+        zoom: 17,
         styles: mapStyles,
         disableDefaultUI: true,
         zoomControl: true,
         mapTypeControl: false,
         streetViewControl: false,
-        fullscreenControl: true,
+        fullscreenControl: false,
+        tilt: 60, // Enable 3D tilt
+        heading: 0,
+        mapTypeId: 'roadmap',
+        rotateControl: true,
       });
 
       setMap(newMap);
@@ -95,8 +103,47 @@ const GoogleMap: React.FC<GoogleMapProps> = ({
       if (marker) marker.setMap(null);
       if (polyline) polyline.setMap(null);
       historyMarkers.forEach(m => m.setMap(null));
+      if (rotationRef.current) cancelAnimationFrame(rotationRef.current);
     };
   }, []);
+
+  // Handle 3D toggle
+  useEffect(() => {
+    if (!map) return;
+    
+    if (is3D) {
+      map.setTilt(60);
+      map.setZoom(Math.max(map.getZoom() || 17, 16));
+    } else {
+      map.setTilt(0);
+      map.setHeading(0);
+    }
+  }, [map, is3D]);
+
+  // Handle auto-rotation
+  useEffect(() => {
+    if (!map || !isRotating) {
+      if (rotationRef.current) {
+        cancelAnimationFrame(rotationRef.current);
+        rotationRef.current = null;
+      }
+      return;
+    }
+
+    const rotate = () => {
+      const currentHeading = map.getHeading() || 0;
+      map.setHeading(currentHeading + 0.3);
+      rotationRef.current = requestAnimationFrame(rotate);
+    };
+
+    rotationRef.current = requestAnimationFrame(rotate);
+
+    return () => {
+      if (rotationRef.current) {
+        cancelAnimationFrame(rotationRef.current);
+      }
+    };
+  }, [map, isRotating]);
 
   // Update current position marker
   useEffect(() => {
@@ -107,22 +154,31 @@ const GoogleMap: React.FC<GoogleMapProps> = ({
     if (marker) marker.setMap(null);
 
     const markerSvg = `
-      <svg width="60" height="60" viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg">
+      <svg width="80" height="80" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
         <defs>
-          <radialGradient id="glow" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stop-color="#00ffff" stop-opacity="0.8"/>
-            <stop offset="50%" stop-color="#00ffff" stop-opacity="0.3"/>
-            <stop offset="100%" stop-color="#00ffff" stop-opacity="0"/>
+          <radialGradient id="glow3d" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stop-color="#00ffff" stop-opacity="1"/>
+            <stop offset="30%" stop-color="#00ffff" stop-opacity="0.6"/>
+            <stop offset="60%" stop-color="#a855f7" stop-opacity="0.3"/>
+            <stop offset="100%" stop-color="#a855f7" stop-opacity="0"/>
           </radialGradient>
-          <linearGradient id="marker-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+          <linearGradient id="marker-gradient-3d" x1="0%" y1="0%" x2="100%" y2="100%">
             <stop offset="0%" stop-color="#00ffff"/>
             <stop offset="50%" stop-color="#a855f7"/>
             <stop offset="100%" stop-color="#ec4899"/>
           </linearGradient>
+          <filter id="neon-glow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+            <feMerge>
+              <feMergeNode in="coloredBlur"/>
+              <feMergeNode in="SourceGraphic"/>
+            </feMerge>
+          </filter>
         </defs>
-        <circle cx="30" cy="30" r="28" fill="url(#glow)"/>
-        <circle cx="30" cy="30" r="12" fill="url(#marker-gradient)" stroke="#ffffff" stroke-width="2"/>
-        <circle cx="30" cy="30" r="5" fill="#ffffff"/>
+        <circle cx="40" cy="40" r="35" fill="url(#glow3d)"/>
+        <circle cx="40" cy="40" r="18" fill="url(#marker-gradient-3d)" stroke="#ffffff" stroke-width="3" filter="url(#neon-glow)"/>
+        <circle cx="40" cy="40" r="8" fill="#ffffff"/>
+        <circle cx="40" cy="40" r="4" fill="#00ffff"/>
       </svg>
     `;
 
@@ -131,8 +187,8 @@ const GoogleMap: React.FC<GoogleMapProps> = ({
       map,
       icon: {
         url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(markerSvg),
-        scaledSize: new google.maps.Size(60, 60),
-        anchor: new google.maps.Point(30, 30),
+        scaledSize: new google.maps.Size(80, 80),
+        anchor: new google.maps.Point(40, 40),
       },
       animation: google.maps.Animation.DROP,
       zIndex: 1000,
@@ -152,41 +208,38 @@ const GoogleMap: React.FC<GoogleMapProps> = ({
     if (polyline) polyline.setMap(null);
     historyMarkers.forEach(m => m.setMap(null));
 
-    // Sort history by timestamp (oldest first for the path)
     const sortedHistory = [...history].sort((a, b) => a.timestamp - b.timestamp);
     const path = sortedHistory.map(entry => ({
       lat: entry.latitude,
       lng: entry.longitude,
     }));
 
-    // Create gradient polyline
     const newPolyline = new google.maps.Polyline({
       path,
       geodesic: true,
       strokeColor: '#00ffff',
-      strokeOpacity: 0.8,
-      strokeWeight: 3,
+      strokeOpacity: 0.9,
+      strokeWeight: 4,
       map,
       icons: [{
         icon: {
           path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-          scale: 3,
+          scale: 4,
           strokeColor: '#a855f7',
           fillColor: '#a855f7',
           fillOpacity: 1,
         },
         offset: '100%',
-        repeat: '100px',
+        repeat: '80px',
       }],
     });
 
     setPolyline(newPolyline);
 
-    // Add small markers for history points
     const smallMarkerSvg = `
-      <svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
-        <circle cx="8" cy="8" r="6" fill="#00ffff" fill-opacity="0.3" stroke="#00ffff" stroke-width="1"/>
-        <circle cx="8" cy="8" r="3" fill="#00ffff"/>
+      <svg width="20" height="20" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="10" cy="10" r="8" fill="#00ffff" fill-opacity="0.2" stroke="#00ffff" stroke-width="2"/>
+        <circle cx="10" cy="10" r="4" fill="#00ffff"/>
       </svg>
     `;
 
@@ -196,8 +249,8 @@ const GoogleMap: React.FC<GoogleMapProps> = ({
         map,
         icon: {
           url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(smallMarkerSvg),
-          scaledSize: new google.maps.Size(16, 16),
-          anchor: new google.maps.Point(8, 8),
+          scaledSize: new google.maps.Size(20, 20),
+          anchor: new google.maps.Point(10, 10),
         },
         zIndex: index,
       });
@@ -219,23 +272,95 @@ const GoogleMap: React.FC<GoogleMapProps> = ({
       lat: selectedHistoryEntry.latitude,
       lng: selectedHistoryEntry.longitude,
     });
-    map.setZoom(16);
+    map.setZoom(18);
   }, [map, selectedHistoryEntry]);
+
+  const resetView = () => {
+    if (!map) return;
+    map.setHeading(0);
+    map.setTilt(is3D ? 60 : 0);
+    map.setZoom(17);
+    map.panTo({ lat: latitude, lng: longitude });
+  };
 
   return (
     <div className="relative w-full h-full">
       <div ref={mapRef} className="w-full h-full rounded-2xl overflow-hidden" />
+      
+      {/* Overlay gradient */}
       <div className="absolute inset-0 pointer-events-none rounded-2xl">
-        <div className="absolute inset-0 bg-gradient-to-t from-background/50 via-transparent to-transparent" />
-        <div className="absolute inset-0 border border-primary/20 rounded-2xl" />
+        <div className="absolute inset-0 bg-gradient-to-t from-background/60 via-transparent to-transparent" />
+        <div className="absolute inset-0 border border-primary/30 rounded-2xl" />
       </div>
-      {/* Trail legend */}
-      {history.length > 1 && (
-        <div className="absolute bottom-4 left-4 glass-panel px-3 py-2 flex items-center gap-2">
-          <div className="w-8 h-1 bg-gradient-to-r from-neon-cyan to-neon-purple rounded-full" />
-          <span className="text-xs text-muted-foreground">Movement Trail</span>
+
+      {/* 3D Controls */}
+      <div className="absolute top-4 right-4 flex flex-col gap-2">
+        <button
+          onClick={() => setIs3D(!is3D)}
+          className={`p-3 rounded-xl backdrop-blur-xl transition-all duration-300 group ${
+            is3D 
+              ? 'bg-primary/20 border border-primary/50 shadow-[0_0_20px_hsl(var(--primary)/0.3)]' 
+              : 'bg-card/80 border border-border/50 hover:border-primary/30'
+          }`}
+          title={is3D ? 'Switch to 2D' : 'Switch to 3D'}
+        >
+          <Mountain className={`w-5 h-5 transition-colors ${is3D ? 'text-primary' : 'text-muted-foreground group-hover:text-primary'}`} />
+        </button>
+
+        <button
+          onClick={() => setIsRotating(!isRotating)}
+          disabled={!is3D}
+          className={`p-3 rounded-xl backdrop-blur-xl transition-all duration-300 group ${
+            isRotating 
+              ? 'bg-secondary/20 border border-secondary/50 shadow-[0_0_20px_hsl(var(--secondary)/0.3)]' 
+              : 'bg-card/80 border border-border/50 hover:border-secondary/30'
+          } ${!is3D ? 'opacity-50 cursor-not-allowed' : ''}`}
+          title={isRotating ? 'Stop rotation' : 'Auto-rotate'}
+        >
+          <RotateCcw className={`w-5 h-5 transition-colors ${
+            isRotating 
+              ? 'text-secondary animate-spin' 
+              : 'text-muted-foreground group-hover:text-secondary'
+          }`} style={{ animationDuration: '3s' }} />
+        </button>
+
+        <button
+          onClick={resetView}
+          className="p-3 rounded-xl bg-card/80 border border-border/50 hover:border-accent/30 backdrop-blur-xl transition-all duration-300 group"
+          title="Reset view"
+        >
+          <Maximize2 className="w-5 h-5 text-muted-foreground group-hover:text-accent transition-colors" />
+        </button>
+      </div>
+
+      {/* 3D indicator */}
+      {is3D && (
+        <div className="absolute top-4 left-4 glass-panel px-4 py-2 flex items-center gap-2">
+          <Box className="w-4 h-4 text-primary animate-pulse" />
+          <span className="text-sm font-display text-primary">3D VIEW</span>
         </div>
       )}
+
+      {/* Trail legend */}
+      {history.length > 1 && (
+        <div className="absolute bottom-4 left-4 glass-panel px-4 py-2 flex items-center gap-3">
+          <div className="w-10 h-1 bg-gradient-to-r from-neon-cyan via-neon-purple to-neon-magenta rounded-full" />
+          <span className="text-xs text-muted-foreground">Movement Trail</span>
+          <span className="text-xs font-display text-neon-green">{history.length} points</span>
+        </div>
+      )}
+
+      {/* Compass */}
+      <div className="absolute bottom-4 right-4 w-12 h-12 glass-panel rounded-full flex items-center justify-center">
+        <div 
+          className="w-8 h-8 relative"
+          style={{ transform: `rotate(${-(map?.getHeading() || 0)}deg)`, transition: 'transform 0.1s' }}
+        >
+          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-b-[12px] border-b-destructive" />
+          <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-[12px] border-t-muted-foreground" />
+          <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-[8px] font-bold text-foreground">N</span>
+        </div>
+      </div>
     </div>
   );
 };
