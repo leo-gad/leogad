@@ -1,9 +1,18 @@
 /// <reference types="google.maps" />
 import React, { useEffect, useRef, useState } from 'react';
 
+interface HistoryEntry {
+  id: string;
+  latitude: number;
+  longitude: number;
+  timestamp: number;
+}
+
 interface GoogleMapProps {
   latitude: number;
   longitude: number;
+  history?: HistoryEntry[];
+  selectedHistoryEntry?: HistoryEntry | null;
   onMapLoad?: (map: google.maps.Map) => void;
 }
 
@@ -14,10 +23,18 @@ declare global {
   }
 }
 
-const GoogleMap: React.FC<GoogleMapProps> = ({ latitude, longitude, onMapLoad }) => {
+const GoogleMap: React.FC<GoogleMapProps> = ({ 
+  latitude, 
+  longitude, 
+  history = [],
+  selectedHistoryEntry,
+  onMapLoad 
+}) => {
   const mapRef = useRef<HTMLDivElement>(null);
   const [map, setMap] = useState<google.maps.Map | null>(null);
   const [marker, setMarker] = useState<google.maps.Marker | null>(null);
+  const [polyline, setPolyline] = useState<google.maps.Polyline | null>(null);
+  const [historyMarkers, setHistoryMarkers] = useState<google.maps.Marker[]>([]);
 
   useEffect(() => {
     const loadGoogleMaps = () => {
@@ -39,83 +56,22 @@ const GoogleMap: React.FC<GoogleMapProps> = ({ latitude, longitude, onMapLoad })
       if (!mapRef.current) return;
 
       const mapStyles = [
-        {
-          elementType: 'geometry',
-          stylers: [{ color: '#0d1117' }]
-        },
-        {
-          elementType: 'labels.text.stroke',
-          stylers: [{ color: '#0d1117' }]
-        },
-        {
-          elementType: 'labels.text.fill',
-          stylers: [{ color: '#4a90a4' }]
-        },
-        {
-          featureType: 'administrative',
-          elementType: 'geometry.stroke',
-          stylers: [{ color: '#1a3a4a' }]
-        },
-        {
-          featureType: 'administrative.land_parcel',
-          elementType: 'labels.text.fill',
-          stylers: [{ color: '#3a8a9a' }]
-        },
-        {
-          featureType: 'landscape.natural',
-          elementType: 'geometry',
-          stylers: [{ color: '#0f1a20' }]
-        },
-        {
-          featureType: 'poi',
-          elementType: 'geometry',
-          stylers: [{ color: '#1a2a35' }]
-        },
-        {
-          featureType: 'poi',
-          elementType: 'labels.text.fill',
-          stylers: [{ color: '#00d4ff' }]
-        },
-        {
-          featureType: 'poi.park',
-          elementType: 'geometry.fill',
-          stylers: [{ color: '#0a2020' }]
-        },
-        {
-          featureType: 'road',
-          elementType: 'geometry',
-          stylers: [{ color: '#1a3545' }]
-        },
-        {
-          featureType: 'road',
-          elementType: 'geometry.stroke',
-          stylers: [{ color: '#0d2030' }]
-        },
-        {
-          featureType: 'road.highway',
-          elementType: 'geometry',
-          stylers: [{ color: '#2a4a5a' }]
-        },
-        {
-          featureType: 'road.highway',
-          elementType: 'geometry.stroke',
-          stylers: [{ color: '#1a3a4a' }]
-        },
-        {
-          featureType: 'transit',
-          elementType: 'geometry',
-          stylers: [{ color: '#1a2535' }]
-        },
-        {
-          featureType: 'water',
-          elementType: 'geometry',
-          stylers: [{ color: '#051525' }]
-        },
-        {
-          featureType: 'water',
-          elementType: 'labels.text.fill',
-          stylers: [{ color: '#00a0c0' }]
-        }
+        { elementType: 'geometry', stylers: [{ color: '#0d1117' }] },
+        { elementType: 'labels.text.stroke', stylers: [{ color: '#0d1117' }] },
+        { elementType: 'labels.text.fill', stylers: [{ color: '#4a90a4' }] },
+        { featureType: 'administrative', elementType: 'geometry.stroke', stylers: [{ color: '#1a3a4a' }] },
+        { featureType: 'administrative.land_parcel', elementType: 'labels.text.fill', stylers: [{ color: '#3a8a9a' }] },
+        { featureType: 'landscape.natural', elementType: 'geometry', stylers: [{ color: '#0f1a20' }] },
+        { featureType: 'poi', elementType: 'geometry', stylers: [{ color: '#1a2a35' }] },
+        { featureType: 'poi', elementType: 'labels.text.fill', stylers: [{ color: '#00d4ff' }] },
+        { featureType: 'poi.park', elementType: 'geometry.fill', stylers: [{ color: '#0a2020' }] },
+        { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#1a3545' }] },
+        { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#0d2030' }] },
+        { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#2a4a5a' }] },
+        { featureType: 'road.highway', elementType: 'geometry.stroke', stylers: [{ color: '#1a3a4a' }] },
+        { featureType: 'transit', elementType: 'geometry', stylers: [{ color: '#1a2535' }] },
+        { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#051525' }] },
+        { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#00a0c0' }] }
       ];
 
       const newMap = new google.maps.Map(mapRef.current, {
@@ -136,23 +92,20 @@ const GoogleMap: React.FC<GoogleMapProps> = ({ latitude, longitude, onMapLoad })
     loadGoogleMaps();
 
     return () => {
-      if (marker) {
-        marker.setMap(null);
-      }
+      if (marker) marker.setMap(null);
+      if (polyline) polyline.setMap(null);
+      historyMarkers.forEach(m => m.setMap(null));
     };
   }, []);
 
+  // Update current position marker
   useEffect(() => {
     if (!map) return;
 
     const position = { lat: latitude, lng: longitude };
 
-    // Remove old marker
-    if (marker) {
-      marker.setMap(null);
-    }
+    if (marker) marker.setMap(null);
 
-    // Create custom marker with SVG
     const markerSvg = `
       <svg width="60" height="60" viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg">
         <defs>
@@ -182,51 +135,107 @@ const GoogleMap: React.FC<GoogleMapProps> = ({ latitude, longitude, onMapLoad })
         anchor: new google.maps.Point(30, 30),
       },
       animation: google.maps.Animation.DROP,
+      zIndex: 1000,
     });
 
     setMarker(newMarker);
-    map.panTo(position);
+    
+    if (!selectedHistoryEntry) {
+      map.panTo(position);
+    }
+  }, [map, latitude, longitude]);
 
-    // Add pulsing circle overlay
-    const pulseCircle = new google.maps.Circle({
-      map,
-      center: position,
-      radius: 100,
-      fillColor: '#00ffff',
-      fillOpacity: 0.1,
+  // Draw history trail polyline
+  useEffect(() => {
+    if (!map || history.length < 2) return;
+
+    if (polyline) polyline.setMap(null);
+    historyMarkers.forEach(m => m.setMap(null));
+
+    // Sort history by timestamp (oldest first for the path)
+    const sortedHistory = [...history].sort((a, b) => a.timestamp - b.timestamp);
+    const path = sortedHistory.map(entry => ({
+      lat: entry.latitude,
+      lng: entry.longitude,
+    }));
+
+    // Create gradient polyline
+    const newPolyline = new google.maps.Polyline({
+      path,
+      geodesic: true,
       strokeColor: '#00ffff',
-      strokeOpacity: 0.4,
-      strokeWeight: 2,
+      strokeOpacity: 0.8,
+      strokeWeight: 3,
+      map,
+      icons: [{
+        icon: {
+          path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+          scale: 3,
+          strokeColor: '#a855f7',
+          fillColor: '#a855f7',
+          fillOpacity: 1,
+        },
+        offset: '100%',
+        repeat: '100px',
+      }],
     });
 
-    // Animate the circle
-    let opacity = 0.1;
-    let increasing = true;
-    const animateCircle = setInterval(() => {
-      if (increasing) {
-        opacity += 0.02;
-        if (opacity >= 0.3) increasing = false;
-      } else {
-        opacity -= 0.02;
-        if (opacity <= 0.1) increasing = true;
-      }
-      pulseCircle.setOptions({ fillOpacity: opacity });
-    }, 50);
+    setPolyline(newPolyline);
+
+    // Add small markers for history points
+    const smallMarkerSvg = `
+      <svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="8" cy="8" r="6" fill="#00ffff" fill-opacity="0.3" stroke="#00ffff" stroke-width="1"/>
+        <circle cx="8" cy="8" r="3" fill="#00ffff"/>
+      </svg>
+    `;
+
+    const newHistoryMarkers = sortedHistory.slice(0, -1).map((entry, index) => {
+      return new google.maps.Marker({
+        position: { lat: entry.latitude, lng: entry.longitude },
+        map,
+        icon: {
+          url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(smallMarkerSvg),
+          scaledSize: new google.maps.Size(16, 16),
+          anchor: new google.maps.Point(8, 8),
+        },
+        zIndex: index,
+      });
+    });
+
+    setHistoryMarkers(newHistoryMarkers);
 
     return () => {
-      clearInterval(animateCircle);
-      pulseCircle.setMap(null);
+      newPolyline.setMap(null);
+      newHistoryMarkers.forEach(m => m.setMap(null));
     };
-  }, [map, latitude, longitude]);
+  }, [map, history]);
+
+  // Pan to selected history entry
+  useEffect(() => {
+    if (!map || !selectedHistoryEntry) return;
+    
+    map.panTo({
+      lat: selectedHistoryEntry.latitude,
+      lng: selectedHistoryEntry.longitude,
+    });
+    map.setZoom(16);
+  }, [map, selectedHistoryEntry]);
 
   return (
     <div className="relative w-full h-full">
       <div ref={mapRef} className="w-full h-full rounded-2xl overflow-hidden" />
-      {/* Gradient overlay at edges */}
       <div className="absolute inset-0 pointer-events-none rounded-2xl">
         <div className="absolute inset-0 bg-gradient-to-t from-background/50 via-transparent to-transparent" />
         <div className="absolute inset-0 border border-primary/20 rounded-2xl" />
       </div>
+      {/* Trail legend */}
+      {history.length > 1 && (
+        <div className="absolute bottom-4 left-4 glass-panel px-3 py-2 flex items-center gap-2">
+          <div className="w-8 h-1 bg-gradient-to-r from-neon-cyan to-neon-purple rounded-full" />
+          <span className="text-xs text-muted-foreground">Movement Trail</span>
+        </div>
+      )}
     </div>
   );
 };

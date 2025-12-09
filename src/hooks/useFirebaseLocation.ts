@@ -5,16 +5,24 @@ interface LocationData {
   longitude: number;
 }
 
+interface HistoryEntry {
+  id: string;
+  latitude: number;
+  longitude: number;
+  timestamp: number;
+}
+
 interface UseFirebaseLocationReturn {
   latitude: number;
   longitude: number;
   isLoading: boolean;
   error: string | null;
   lastUpdated: Date | null;
+  history: HistoryEntry[];
   refetch: () => Promise<void>;
 }
 
-const FIREBASE_URL = 'https://dht11-9aca0-default-rtdb.firebaseio.com/.json';
+const FIREBASE_URL = 'https://dht11-9aca0-default-rtdb.firebaseio.com';
 
 export const useFirebaseLocation = (): UseFirebaseLocationReturn => {
   const [latitude, setLatitude] = useState<number>(0);
@@ -22,24 +30,81 @@ export const useFirebaseLocation = (): UseFirebaseLocationReturn => {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [lastSavedPosition, setLastSavedPosition] = useState<string>('');
+
+  // Save location to history on Firebase
+  const saveToHistory = useCallback(async (lat: number, lng: number) => {
+    const positionKey = `${lat.toFixed(5)},${lng.toFixed(5)}`;
+    
+    // Only save if position has changed
+    if (positionKey === lastSavedPosition) return;
+    
+    try {
+      const historyEntry = {
+        latitude: lat,
+        longitude: lng,
+        timestamp: Date.now(),
+      };
+
+      await fetch(`${FIREBASE_URL}/history.json`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(historyEntry),
+      });
+
+      setLastSavedPosition(positionKey);
+    } catch (err) {
+      console.error('Failed to save history:', err);
+    }
+  }, [lastSavedPosition]);
+
+  // Fetch location history from Firebase
+  const fetchHistory = useCallback(async () => {
+    try {
+      const response = await fetch(`${FIREBASE_URL}/history.json`);
+      const data = await response.json();
+
+      if (data) {
+        const entries: HistoryEntry[] = Object.entries(data).map(([id, entry]: [string, any]) => ({
+          id,
+          latitude: entry.latitude,
+          longitude: entry.longitude,
+          timestamp: entry.timestamp,
+        }));
+
+        // Sort by timestamp, newest first
+        entries.sort((a, b) => b.timestamp - a.timestamp);
+        setHistory(entries);
+      }
+    } catch (err) {
+      console.error('Failed to fetch history:', err);
+    }
+  }, []);
 
   const fetchLocation = useCallback(async () => {
     try {
       setIsLoading(true);
       setError(null);
 
-      const response = await fetch(FIREBASE_URL);
-      
+      const response = await fetch(`${FIREBASE_URL}/.json`);
+
       if (!response.ok) {
         throw new Error('Failed to fetch location data');
       }
 
-      const data: LocationData = await response.json();
-      
+      const data = await response.json();
+
       if (data && typeof data.latitude === 'number' && typeof data.longitude === 'number') {
         setLatitude(data.latitude);
         setLongitude(data.longitude);
         setLastUpdated(new Date());
+
+        // Save to history
+        await saveToHistory(data.latitude, data.longitude);
+        
+        // Refresh history
+        await fetchHistory();
       } else {
         throw new Error('Invalid data format');
       }
@@ -48,7 +113,7 @@ export const useFirebaseLocation = (): UseFirebaseLocationReturn => {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [saveToHistory, fetchHistory]);
 
   useEffect(() => {
     fetchLocation();
@@ -65,6 +130,7 @@ export const useFirebaseLocation = (): UseFirebaseLocationReturn => {
     isLoading,
     error,
     lastUpdated,
+    history,
     refetch: fetchLocation,
   };
 };
