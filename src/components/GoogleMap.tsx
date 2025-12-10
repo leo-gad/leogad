@@ -14,6 +14,7 @@ interface GoogleMapProps {
   longitude: number;
   history?: HistoryEntry[];
   selectedHistoryEntry?: HistoryEntry | null;
+  isGpsActive?: boolean;
   onMapLoad?: (map: google.maps.Map) => void;
 }
 
@@ -29,6 +30,7 @@ const GoogleMap: React.FC<GoogleMapProps> = ({
   longitude, 
   history = [],
   selectedHistoryEntry,
+  isGpsActive = true,
   onMapLoad 
 }) => {
   const mapRef = useRef<HTMLDivElement>(null);
@@ -145,9 +147,18 @@ const GoogleMap: React.FC<GoogleMapProps> = ({
     };
   }, [map, isRotating]);
 
-  // Update current position marker
+  // Update current position marker based on GPS status
   useEffect(() => {
     if (!map) return;
+
+    // If GPS is not active, hide the marker
+    if (!isGpsActive) {
+      if (marker) {
+        marker.setMap(null);
+        setMarker(null);
+      }
+      return;
+    }
 
     const position = { lat: latitude, lng: longitude };
 
@@ -199,7 +210,7 @@ const GoogleMap: React.FC<GoogleMapProps> = ({
     if (!selectedHistoryEntry) {
       map.panTo(position);
     }
-  }, [map, latitude, longitude]);
+  }, [map, latitude, longitude, isGpsActive]);
 
   // Draw history trail polyline
   useEffect(() => {

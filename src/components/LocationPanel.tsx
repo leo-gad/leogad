@@ -6,6 +6,7 @@ interface LocationPanelProps {
   longitude: number;
   lastUpdated: Date | null;
   isLoading: boolean;
+  isGpsActive: boolean;
   onRefresh: () => void;
 }
 
@@ -14,6 +15,7 @@ const LocationPanel: React.FC<LocationPanelProps> = ({
   longitude,
   lastUpdated,
   isLoading,
+  isGpsActive,
   onRefresh,
 }) => {
   const formatCoordinate = (value: number, isLatitude: boolean) => {
@@ -69,14 +71,22 @@ const LocationPanel: React.FC<LocationPanelProps> = ({
         </div>
       </div>
 
-      {/* Status indicator */}
-      <div className="flex items-center justify-between p-4 rounded-xl bg-gradient-to-r from-primary/10 to-secondary/10 border border-primary/20">
+      {/* GPS Status indicator */}
+      <div className={`flex items-center justify-between p-4 rounded-xl border ${
+        isGpsActive 
+          ? 'bg-gradient-to-r from-primary/10 to-secondary/10 border-primary/20' 
+          : 'bg-destructive/10 border-destructive/30'
+      }`}>
         <div className="flex items-center gap-3">
           <div className="relative">
-            <Activity className="w-5 h-5 text-neon-green" />
-            <span className="absolute -top-1 -right-1 w-2 h-2 bg-neon-green rounded-full animate-pulse" />
+            <Activity className={`w-5 h-5 ${isGpsActive ? 'text-neon-green' : 'text-destructive'}`} />
+            <span className={`absolute -top-1 -right-1 w-2 h-2 rounded-full ${
+              isGpsActive ? 'bg-neon-green animate-pulse' : 'bg-destructive'
+            }`} />
           </div>
-          <span className="text-sm font-medium text-foreground">Connected to Firebase</span>
+          <span className="text-sm font-medium text-foreground">
+            {isGpsActive ? 'GPS Active' : 'GPS Inactive'}
+          </span>
         </div>
         <div className="text-xs text-muted-foreground">
           {lastUpdated
