@@ -70,8 +70,8 @@ export const useFirebaseLocation = (): UseFirebaseLocationReturn => {
       if (data) {
         const entries: HistoryEntry[] = Object.entries(data).map(([id, entry]: [string, any]) => ({
           id,
-          latitude: entry.latitude,
-          longitude: entry.longitude,
+          latitude: typeof entry.latitude === 'number' ? entry.latitude : parseFloat(entry.latitude),
+          longitude: typeof entry.longitude === 'number' ? entry.longitude : parseFloat(entry.longitude),
           timestamp: entry.timestamp,
         }));
 
