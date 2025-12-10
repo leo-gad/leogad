@@ -101,9 +101,13 @@ export const useFirebaseLocation = (): UseFirebaseLocationReturn => {
       const gpsActive = data?.active === 1 || data?.active === "1";
       setIsGpsActive(gpsActive);
 
-      if (data && typeof data.latitude === 'number' && typeof data.longitude === 'number') {
-        setLatitude(data.latitude);
-        setLongitude(data.longitude);
+      // Parse latitude and longitude (handle both number and string types)
+      const lat = typeof data.latitude === 'number' ? data.latitude : parseFloat(data.latitude);
+      const lng = typeof data.longitude === 'number' ? data.longitude : parseFloat(data.longitude);
+
+      if (!isNaN(lat) && !isNaN(lng)) {
+        setLatitude(lat);
+        setLongitude(lng);
         setLastUpdated(new Date());
 
         // Save to history only if GPS is active
