@@ -34,7 +34,6 @@ export const useFirebaseLocation = (): UseFirebaseLocationReturn => {
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [lastSavedPosition, setLastSavedPosition] = useState<string>('');
   const [isGpsActive, setIsGpsActive] = useState<boolean>(false);
-  const [previousPosition, setPreviousPosition] = useState<string>('');
 
   // Save location to history on Firebase
   const saveToHistory = useCallback(async (lat: number, lng: number) => {
@@ -98,30 +97,22 @@ export const useFirebaseLocation = (): UseFirebaseLocationReturn => {
 
       const data = await response.json();
 
+      // Check GPS active status from Firebase 'active' field (1 = active, 0 = inactive)
+      const gpsActive = data?.active === 1 || data?.active === "1";
+      setIsGpsActive(gpsActive);
+
       if (data && typeof data.latitude === 'number' && typeof data.longitude === 'number') {
-        const currentPosition = `${data.latitude.toFixed(5)},${data.longitude.toFixed(5)}`;
-        
-        // Check if position changed (GPS is sending updates)
-        if (currentPosition !== previousPosition) {
-          setIsGpsActive(true);
-          setPreviousPosition(currentPosition);
-        } else {
-          // No change in position - GPS might be off
-          setIsGpsActive(false);
-        }
-        
         setLatitude(data.latitude);
         setLongitude(data.longitude);
         setLastUpdated(new Date());
 
-        // Save to history
-        await saveToHistory(data.latitude, data.longitude);
+        // Save to history only if GPS is active
+        if (gpsActive) {
+          await saveToHistory(data.latitude, data.longitude);
+        }
         
         // Refresh history
         await fetchHistory();
-      } else {
-        // No valid data - GPS is off
-        setIsGpsActive(false);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
