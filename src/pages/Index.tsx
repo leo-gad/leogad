@@ -16,7 +16,7 @@ interface HistoryEntry {
 const FIREBASE_URL = 'https://dht11-9aca0-default-rtdb.firebaseio.com';
 
 const Index: React.FC = () => {
-  const { latitude, longitude, isLoading, error, lastUpdated, history, refetch } = useFirebaseLocation();
+  const { latitude, longitude, isLoading, error, lastUpdated, history, isGpsActive, refetch } = useFirebaseLocation();
   const [selectedHistoryEntry, setSelectedHistoryEntry] = useState<HistoryEntry | null>(null);
 
   const handleClearHistory = useCallback(async () => {
@@ -82,6 +82,7 @@ const Index: React.FC = () => {
                       longitude={longitude}
                       history={history}
                       selectedHistoryEntry={selectedHistoryEntry}
+                      isGpsActive={isGpsActive}
                     />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center bg-card">
@@ -103,6 +104,7 @@ const Index: React.FC = () => {
                   longitude={longitude}
                   lastUpdated={lastUpdated}
                   isLoading={isLoading}
+                  isGpsActive={isGpsActive}
                   onRefresh={refetch}
                 />
 

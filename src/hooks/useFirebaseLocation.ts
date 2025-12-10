@@ -19,6 +19,7 @@ interface UseFirebaseLocationReturn {
   error: string | null;
   lastUpdated: Date | null;
   history: HistoryEntry[];
+  isGpsActive: boolean;
   refetch: () => Promise<void>;
 }
 
@@ -32,6 +33,8 @@ export const useFirebaseLocation = (): UseFirebaseLocationReturn => {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [lastSavedPosition, setLastSavedPosition] = useState<string>('');
+  const [isGpsActive, setIsGpsActive] = useState<boolean>(false);
+  const [previousPosition, setPreviousPosition] = useState<string>('');
 
   // Save location to history on Firebase
   const saveToHistory = useCallback(async (lat: number, lng: number) => {
@@ -96,6 +99,17 @@ export const useFirebaseLocation = (): UseFirebaseLocationReturn => {
       const data = await response.json();
 
       if (data && typeof data.latitude === 'number' && typeof data.longitude === 'number') {
+        const currentPosition = `${data.latitude.toFixed(5)},${data.longitude.toFixed(5)}`;
+        
+        // Check if position changed (GPS is sending updates)
+        if (currentPosition !== previousPosition) {
+          setIsGpsActive(true);
+          setPreviousPosition(currentPosition);
+        } else {
+          // No change in position - GPS might be off
+          setIsGpsActive(false);
+        }
+        
         setLatitude(data.latitude);
         setLongitude(data.longitude);
         setLastUpdated(new Date());
@@ -106,7 +120,8 @@ export const useFirebaseLocation = (): UseFirebaseLocationReturn => {
         // Refresh history
         await fetchHistory();
       } else {
-        throw new Error('Invalid data format');
+        // No valid data - GPS is off
+        setIsGpsActive(false);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
@@ -131,6 +146,7 @@ export const useFirebaseLocation = (): UseFirebaseLocationReturn => {
     error,
     lastUpdated,
     history,
+    isGpsActive,
     refetch: fetchLocation,
   };
 };
